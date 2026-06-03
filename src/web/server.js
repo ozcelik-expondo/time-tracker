@@ -160,7 +160,6 @@ async function handleAction(request, response, action) {
     nextState = await tracker.switch(getRequiredTicketId(payload));
   } else if (action === 'pause') {
     nextState = await tracker.pause();
-  }
   } else {
     sendJson(response, 404, { message: 'Route not found.' });
     return;
