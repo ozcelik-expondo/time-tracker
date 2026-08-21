@@ -87,7 +87,7 @@ function createJiraClient({
 
     async getIssueSummary(issueKey) {
       if (!isConfigured) {
-        return null;
+        throw new Error(getConfigurationErrorMessage());
       }
 
       const url = `${normalizedBaseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=summary`;
@@ -102,14 +102,14 @@ function createJiraClient({
       const bodyText = typeof response.text === 'function' ? await response.text() : '';
 
       if (!response.ok) {
-        return null;
+        throw new Error(parseErrorMessage(bodyText, response.status));
       }
 
       try {
         const parsed = JSON.parse(bodyText);
         return parsed?.fields?.summary ?? null;
       } catch (error) {
-        return null;
+        throw new Error(`Jira response for ${issueKey} could not be parsed as JSON.`);
       }
     }
   };

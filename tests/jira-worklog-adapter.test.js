@@ -10,6 +10,7 @@ test('toJiraWorklog maps a completed session to Jira worklog payload', () => {
     endAt: '2026-05-04T09:42:30.000Z',
     durationMs: 2550000,
     durationSeconds: 2550,
+    kind: 'work',
     synced: false,
     syncError: null
   });
@@ -36,4 +37,22 @@ test('toJiraWorklog maps a completed session to Jira worklog payload', () => {
       }
     }
   });
+});
+
+test('toJiraWorklog marks review sessions distinctly from regular work', () => {
+  const result = toJiraWorklog({
+    ticketId: 'PROJ-123',
+    startAt: '2026-05-04T09:00:00.000Z',
+    endAt: '2026-05-04T09:42:30.000Z',
+    durationMs: 2550000,
+    durationSeconds: 2550,
+    kind: 'review',
+    synced: false,
+    syncError: null
+  });
+
+  assert.equal(
+    result.payload.comment.content[0].content[0].text,
+    'Code review logged with local time-tracker CLI.'
+  );
 });

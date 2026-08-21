@@ -10,6 +10,7 @@ const dom = {
   headerTimer: document.querySelector('#header-timer'),
   ticketInput: document.querySelector('#ticket-input'),
   startSwitchButton: document.querySelector('#start-switch-button'),
+  reviewButton: document.querySelector('#review-button'),
   pauseButton: document.querySelector('#pause-button'),
   currentSessionBadge: document.querySelector('#current-session-badge'),
   currentSession: document.querySelector('#current-session'),
@@ -71,6 +72,10 @@ function normalizeTicketId(value) {
   return normalizedValue.trim().replace(/\/+$/g, '').toUpperCase();
 }
 
+function getEntryKind(entry) {
+  return entry?.kind === 'review' ? 'review' : 'work';
+}
+
 function getLocalDayKey(date) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
@@ -89,6 +94,7 @@ function getActiveEntrySnapshot(state, referenceDate) {
     startAt: state.activeEntry.startAt,
     endAt: referenceDate.toISOString(),
     durationMs: referenceDate.getTime() - Date.parse(state.activeEntry.startAt),
+    kind: getEntryKind(state.activeEntry),
     isActive: true
   };
 }
@@ -102,6 +108,7 @@ function getEntriesForDay(state, referenceDate = new Date(), { includeActive = f
     .filter((session) => isSameLocalDay(session.startAt, referenceDate) || isSameLocalDay(session.endAt, referenceDate))
     .map((session) => ({
       ...session,
+      kind: getEntryKind(session),
       isActive: false
     }));
   const activeEntry = includeActive ? getActiveEntrySnapshot(state, referenceDate) : null;
@@ -125,10 +132,12 @@ function getYesterdayEntries(state, referenceDate = new Date()) {
 
 function getDashboardStatus(state, todayEntries) {
   if (state?.activeEntry) {
+    const isReview = getEntryKind(state.activeEntry) === 'review';
+
     return {
-      label: 'Working',
-      tone: 'working',
-      note: 'An active ticket is running right now.'
+      label: isReview ? 'Reviewing' : 'Working',
+      tone: isReview ? 'reviewing' : 'working',
+      note: isReview ? 'A code review is running right now.' : 'An active ticket is running right now.'
     };
   }
 
@@ -150,13 +159,15 @@ function getDashboardStatus(state, todayEntries) {
 function getCurrentSessionViewModel(state, todayEntries) {
   if (state?.activeEntry) {
     const activeEntry = todayEntries.find((entry) => entry.isActive);
+    const isReview = getEntryKind(activeEntry) === 'review';
 
     return {
       ticketId: activeEntry.ticketId,
       startAt: activeEntry.startAt,
       durationMs: activeEntry.durationMs,
-      statusLabel: 'Working',
-      tone: 'working'
+      kind: activeEntry.kind,
+      statusLabel: isReview ? 'Reviewing' : 'Working',
+      tone: isReview ? 'reviewing' : 'working'
     };
   }
 
@@ -167,6 +178,7 @@ function getCurrentSessionViewModel(state, todayEntries) {
       ticketId: latestCompletedEntry.ticketId,
       startAt: latestCompletedEntry.startAt,
       durationMs: latestCompletedEntry.durationMs,
+      kind: latestCompletedEntry.kind,
       statusLabel: 'Paused',
       tone: 'paused'
     };
@@ -176,15 +188,33 @@ function getCurrentSessionViewModel(state, todayEntries) {
 }
 
 function getSummaryItems(entries) {
-  const totalsByTicket = new Map();
+  const totalsByKey = new Map();
 
   for (const entry of entries) {
-    totalsByTicket.set(entry.ticketId, (totalsByTicket.get(entry.ticketId) ?? 0) + entry.durationMs);
+    const key = `${entry.ticketId}::${getEntryKind(entry)}`;
+    const existing = totalsByKey.get(key) ?? { ticketId: entry.ticketId, kind: getEntryKind(entry), durationMs: 0 };
+    existing.durationMs += entry.durationMs;
+    totalsByKey.set(key, existing);
   }
 
-  return Array.from(totalsByTicket.entries())
-    .map(([ticketId, durationMs]) => ({ ticketId, durationMs }))
-    .sort((left, right) => right.durationMs - left.durationMs);
+  return Array.from(totalsByKey.values()).sort((left, right) => right.durationMs - left.durationMs);
+}
+
+function groupEntriesByTicketAndKind(entries) {
+  const groups = new Map();
+
+  for (const entry of entries) {
+    const kind = getEntryKind(entry);
+    const key = `${entry.ticketId}::${kind}`;
+
+    if (!groups.has(key)) {
+      groups.set(key, { ticketId: entry.ticketId, kind, entries: [] });
+    }
+
+    groups.get(key).entries.push(entry);
+  }
+
+  return Array.from(groups.values());
 }
 
 function getTicketSummary(ticketId) {
@@ -199,7 +229,7 @@ function getTicketSummary(ticketId) {
   return trimmedSummary.length > 0 ? trimmedSummary : null;
 }
 
-function createTicketLabel(ticketId, variant = 'inline') {
+function createTicketLabel(ticketId, variant = 'inline', kind = 'work') {
   const label = document.createElement('span');
   label.className = `ticket-label ${variant}`;
 
@@ -207,6 +237,13 @@ function createTicketLabel(ticketId, variant = 'inline') {
   key.className = 'ticket-key';
   key.textContent = ticketId;
   label.append(key);
+
+  if (kind === 'review') {
+    const reviewTag = document.createElement('span');
+    reviewTag.className = 'review-tag';
+    reviewTag.textContent = 'Code review';
+    label.append(reviewTag);
+  }
 
   const summary = getTicketSummary(ticketId);
 
@@ -232,8 +269,7 @@ function renderRecapSummary(entries) {
   }
 
   dom.yesterdaySummary.className = 'recap-summary';
-  const totals = getSummaryItems(entries);
-  const totalDurationMs = totals.reduce((sum, item) => sum + item.durationMs, 0);
+  const totalDurationMs = entries.reduce((sum, entry) => sum + entry.durationMs, 0);
 
   const hero = document.createElement('div');
   hero.className = 'recap-total';
@@ -247,22 +283,7 @@ function renderRecapSummary(entries) {
 
   hero.append(heroLabel, heroValue);
 
-  const chips = document.createElement('div');
-  chips.className = 'recap-chips';
-
-  for (const item of totals) {
-    const chip = document.createElement('div');
-    chip.className = 'recap-chip';
-
-    const duration = document.createElement('span');
-    duration.className = 'ticket-duration';
-    duration.textContent = formatHumanDuration(item.durationMs);
-
-    chip.append(createTicketLabel(item.ticketId, 'stacked'), duration);
-    chips.append(chip);
-  }
-
-  dom.yesterdaySummary.append(hero, chips);
+  dom.yesterdaySummary.append(hero);
 }
 
 function showToast(message) {
@@ -322,31 +343,45 @@ async function submitAction(path, payload, successMessage) {
   }
 }
 
-function buildTicketActionPath(ticketId) {
-  if (uiState.trackerState?.activeEntry?.ticketId === ticketId) {
+function buildTicketActionPath(ticketId, kind) {
+  const activeEntry = uiState.trackerState?.activeEntry;
+
+  if (activeEntry?.ticketId === ticketId && getEntryKind(activeEntry) === kind) {
     return null;
   }
 
-  return uiState.trackerState?.activeEntry ? '/switch' : '/start';
+  return activeEntry ? '/switch' : '/start';
 }
 
-async function startOrSwitch() {
-  const ticketId = normalizeTicketId(dom.ticketInput.value);
+async function startEntry(kind) {
+  const inputTicket = normalizeTicketId(dom.ticketInput.value);
+  let ticketId = inputTicket;
+
+  const todayEntries = getTodayEntries(uiState.trackerState);
+  const entryNoun = kind === 'review' ? 'review' : 'ticket';
 
   if (!ticketId) {
-    showToast('Enter a ticket first.');
-    dom.ticketInput.focus();
-    return;
+    const latestCompletedEntry = [...todayEntries].reverse().find((entry) => !entry.isActive && entry.kind === kind);
+
+    if (latestCompletedEntry) {
+      ticketId = latestCompletedEntry.ticketId;
+      showToast(`Resuming ${ticketId}.`);
+    } else {
+      showToast(`Enter a ticket to ${kind === 'review' ? 'review' : 'start'} first.`);
+      dom.ticketInput.focus();
+      return;
+    }
   }
 
-  const path = buildTicketActionPath(ticketId);
+  const path = buildTicketActionPath(ticketId, kind);
 
   if (!path) {
     showToast(`Already tracking ${ticketId}.`);
     return;
   }
 
-  await submitAction(path, { ticketId }, path === '/switch' ? `Switched to ${ticketId}.` : `Started ${ticketId}.`);
+  const startedMessage = kind === 'review' ? `Started reviewing ${ticketId}.` : `Started ${ticketId}.`;
+  await submitAction(path, { ticketId, kind }, path === '/switch' ? `Switched to ${entryNoun} ${ticketId}.` : startedMessage);
   dom.ticketInput.value = '';
   dom.ticketInput.focus();
 }
@@ -371,7 +406,7 @@ function renderCurrentSession(viewModel) {
 
   const ticketDisplay = document.createElement('div');
   ticketDisplay.className = 'ticket-display';
-  ticketDisplay.append(createTicketLabel(viewModel.ticketId, 'stacked'));
+  ticketDisplay.append(createTicketLabel(viewModel.ticketId, 'stacked', viewModel.kind));
 
   const metadata = document.createElement('div');
   metadata.className = 'session-metadata';
@@ -404,23 +439,14 @@ function renderSessionLog(entries) {
   }
 
   dom.sessionLog.className = 'session-log';
-  const groups = new Map();
 
-  for (const entry of entries) {
-    if (!groups.has(entry.ticketId)) {
-      groups.set(entry.ticketId, []);
-    }
-
-    groups.get(entry.ticketId).push(entry);
-  }
-
-  for (const [ticketId, ticketEntries] of groups.entries()) {
+  for (const { ticketId, kind, entries: ticketEntries } of groupEntriesByTicketAndKind(entries)) {
     const group = document.createElement('section');
     group.className = 'ticket-group';
 
     const title = document.createElement('h3');
     title.className = 'ticket-group-title';
-    title.append(createTicketLabel(ticketId, 'stacked'));
+    title.append(createTicketLabel(ticketId, 'stacked', kind));
     group.append(title);
 
     for (const entry of ticketEntries) {
@@ -435,7 +461,7 @@ function renderSessionLog(entries) {
 
       const subtext = document.createElement('div');
       subtext.className = 'session-subtext';
-      subtext.textContent = entry.isActive ? 'Working' : 'Completed';
+      subtext.textContent = entry.isActive ? (kind === 'review' ? 'Reviewing' : 'Working') : 'Completed';
       left.append(subtext);
 
       const right = document.createElement('strong');
@@ -461,23 +487,14 @@ function renderYesterdayLog(entries) {
   }
 
   dom.yesterdayLog.className = 'session-log';
-  const groups = new Map();
 
-  for (const entry of entries) {
-    if (!groups.has(entry.ticketId)) {
-      groups.set(entry.ticketId, []);
-    }
-
-    groups.get(entry.ticketId).push(entry);
-  }
-
-  for (const [ticketId, ticketEntries] of groups.entries()) {
+  for (const { ticketId, kind, entries: ticketEntries } of groupEntriesByTicketAndKind(entries)) {
     const group = document.createElement('section');
     group.className = 'ticket-group';
 
     const title = document.createElement('h3');
     title.className = 'ticket-group-title';
-    title.append(createTicketLabel(ticketId, 'stacked'));
+    title.append(createTicketLabel(ticketId, 'stacked', kind));
     group.append(title);
 
     for (const entry of ticketEntries) {
@@ -532,7 +549,7 @@ function renderSummary(entries) {
     const row = document.createElement('div');
     row.className = 'summary-item';
 
-    const label = createTicketLabel(item.ticketId, 'inline');
+    const label = createTicketLabel(item.ticketId, 'inline', item.kind);
 
     const value = document.createElement('span');
     value.className = 'summary-duration';
@@ -567,17 +584,21 @@ function render() {
 }
 
 dom.startSwitchButton.addEventListener('click', () => {
-  startOrSwitch();
+  startEntry('work');
+});
+
+dom.reviewButton.addEventListener('click', () => {
+  startEntry('review');
 });
 
 dom.pauseButton.addEventListener('click', () => {
-  submitAction('/pause', null, 'Paused current session.');
+  submitAction('/pause', null, 'Stopped current session.');
 });
 
 dom.ticketInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    startOrSwitch();
+    startEntry('work');
   }
 });
 

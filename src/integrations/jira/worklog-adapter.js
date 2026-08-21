@@ -17,7 +17,11 @@ function toJiraTimestamp(timestamp) {
   ].join('');
 }
 
-function createComment() {
+function createComment(kind) {
+  const text = kind === 'review'
+    ? 'Code review logged with local time-tracker CLI.'
+    : 'Logged with local time-tracker CLI.';
+
   return {
     type: 'doc',
     version: 1,
@@ -27,7 +31,7 @@ function createComment() {
         content: [
           {
             type: 'text',
-            text: 'Logged with local time-tracker CLI.'
+            text
           }
         ]
       }
@@ -43,7 +47,7 @@ function toJiraWorklog(session) {
       timeSpentSeconds: Number.isFinite(session.durationSeconds)
         ? session.durationSeconds
         : getDurationInSeconds(session.startAt, session.endAt),
-      comment: createComment()
+      comment: createComment(session.kind)
     }
   };
 }

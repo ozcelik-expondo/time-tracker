@@ -9,6 +9,10 @@ const {
 } = require('../domain/session');
 const { normalizeTicketId } = require('../domain/ticket-id');
 
+function normalizeKind(kind) {
+  return kind === 'review' ? 'review' : 'work';
+}
+
 function normalizeActiveEntry(activeEntry) {
   if (!activeEntry) {
     return null;
@@ -16,7 +20,8 @@ function normalizeActiveEntry(activeEntry) {
 
   return {
     ticketId: normalizeTicketId(activeEntry.ticketId),
-    startAt: activeEntry.startAt
+    startAt: activeEntry.startAt,
+    kind: normalizeKind(activeEntry.kind)
   };
 }
 
@@ -39,6 +44,7 @@ function normalizeSession(session) {
     durationSeconds: Number.isFinite(session?.durationSeconds)
       ? session.durationSeconds
       : getDurationInSeconds(normalizedSession.startAt, normalizedSession.endAt),
+    kind: normalizeKind(session?.kind),
     synced: session?.synced === true,
     syncError: typeof session?.syncError === 'string' ? session.syncError : null
   };

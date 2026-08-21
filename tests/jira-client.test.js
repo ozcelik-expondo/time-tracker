@@ -118,3 +118,41 @@ test('createJiraClient surfaces Jira API failures', async () => {
     /Issue does not exist/
   );
 });
+
+test('createJiraClient surfaces the reason an issue summary could not be fetched', async () => {
+  const client = createJiraClient({
+    baseUrl: 'https://example.atlassian.net',
+    email: 'dev@example.com',
+    apiToken: 'secret-token',
+    fetchImpl: async () => ({
+      ok: false,
+      status: 404,
+      async text() {
+        return JSON.stringify({
+          errorMessages: ['Issue does not exist']
+        });
+      }
+    })
+  });
+
+  await assert.rejects(
+    () => client.getIssueSummary('PROJ-404'),
+    /Issue does not exist/
+  );
+});
+
+test('createJiraClient refuses to fetch issue summaries when not configured', async () => {
+  const client = createJiraClient({
+    baseUrl: '',
+    email: '',
+    apiToken: '',
+    fetchImpl: async () => {
+      throw new Error('fetch should not be called');
+    }
+  });
+
+  await assert.rejects(
+    () => client.getIssueSummary('PROJ-7'),
+    /Jira sync is not configured/
+  );
+});

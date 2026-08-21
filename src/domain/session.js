@@ -27,12 +27,13 @@ function buildSessionId(session) {
   return `${session.ticketId}:${session.startAt}:${session.endAt}`;
 }
 
-function createSession({ ticketId, startAt, endAt }) {
+function createSession({ ticketId, startAt, endAt, kind = 'work' }) {
   return {
     ticketId,
     startAt,
     endAt,
-    durationMs: getDurationInMilliseconds(startAt, endAt)
+    durationMs: getDurationInMilliseconds(startAt, endAt),
+    kind
   };
 }
 

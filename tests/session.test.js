@@ -14,8 +14,28 @@ test('createSession returns the expected session shape', () => {
     ticketId: 'PROJ-123',
     startAt: '2026-05-04T09:00:00.000Z',
     endAt: '2026-05-04T09:30:00.000Z',
-    durationMs: 1800000
+    durationMs: 1800000,
+    kind: 'work'
   });
+});
+
+test('createSession defaults to a "work" kind and preserves an explicit "review" kind', () => {
+  const workSession = createSession({
+    ticketId: 'PROJ-123',
+    startAt: '2026-05-04T09:00:00.000Z',
+    endAt: '2026-05-04T09:30:00.000Z'
+  });
+
+  assert.equal(workSession.kind, 'work');
+
+  const reviewSession = createSession({
+    ticketId: 'PROJ-123',
+    startAt: '2026-05-04T09:00:00.000Z',
+    endAt: '2026-05-04T09:30:00.000Z',
+    kind: 'review'
+  });
+
+  assert.equal(reviewSession.kind, 'review');
 });
 
 test('getDurationInMilliseconds computes the duration between timestamps', () => {

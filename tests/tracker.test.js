@@ -25,7 +25,8 @@ test('tracker normalizes ticket input: number, key, and URL', async () => {
   assert.equal(state.status, 'working');
   assert.deepEqual(state.activeEntry, {
     ticketId: 'COM-646',
-    startAt: '2026-05-04T12:00:00.000Z'
+    startAt: '2026-05-04T12:00:00.000Z',
+    kind: 'work'
   });
   if (state.sessions.length > 0) {
     assert.equal(state.sessions[0].ticketId, 'COM-646');
@@ -38,7 +39,8 @@ test('tracker normalizes ticket input: number, key, and URL', async () => {
   assert.equal(state.status, 'working');
   assert.deepEqual(state.activeEntry, {
     ticketId: 'COM-646',
-    startAt: '2026-05-04T12:00:00.000Z'
+    startAt: '2026-05-04T12:00:00.000Z',
+    kind: 'work'
   });
   if (state.sessions.length > 0) {
     assert.equal(state.sessions[0].ticketId, 'COM-646');
@@ -51,7 +53,8 @@ test('tracker normalizes ticket input: number, key, and URL', async () => {
   assert.equal(state.status, 'working');
   assert.deepEqual(state.activeEntry, {
     ticketId: 'COM-646',
-    startAt: '2026-05-04T12:00:00.000Z'
+    startAt: '2026-05-04T12:00:00.000Z',
+    kind: 'work'
   });
   if (state.sessions.length > 0) {
     assert.equal(state.sessions[0].ticketId, 'COM-646');
@@ -82,6 +85,7 @@ test('tracker persists sessions after commands', async () => {
       startAt: '2026-05-04T09:00:00.000Z',
       endAt: '2026-05-04T09:45:00.000Z',
       durationMs: 2700000,
+      kind: 'work',
       durationSeconds: 2700,
       synced: false,
       syncError: null
@@ -112,7 +116,8 @@ test('tracker restores an active session after reload', async () => {
     status: 'working',
     activeEntry: {
       ticketId: 'PROJ-7',
-      startAt: '2026-05-04T11:00:00.000Z'
+      startAt: '2026-05-04T11:00:00.000Z',
+      kind: 'work'
     },
     sessions: []
   });
@@ -132,7 +137,8 @@ test('tracker normalizes Jira browse URLs into ticket IDs', async () => {
     status: 'working',
     activeEntry: {
       ticketId: 'COM-608',
-      startAt: '2026-05-04T11:00:00.000Z'
+      startAt: '2026-05-04T11:00:00.000Z',
+      kind: 'work'
     },
     sessions: []
   });
@@ -157,10 +163,55 @@ test('tracker does not close and reopen the same normalized active ticket', asyn
     status: 'working',
     activeEntry: {
       ticketId: 'COM-608',
-      startAt: '2026-05-04T11:00:00.000Z'
+      startAt: '2026-05-04T11:00:00.000Z',
+      kind: 'work'
     },
     sessions: []
   });
+});
+
+test('tracker treats starting a code review on the active ticket as a distinct entry', async () => {
+  const filePath = await createTempFilePath();
+  const times = [
+    '2026-05-04T11:00:00.000Z',
+    '2026-05-04T11:05:00.000Z'
+  ];
+  const store = createFileStateStore({ filePath });
+  const tracker = createTracker({
+    store,
+    now: () => times.shift()
+  });
+
+  await tracker.start('COM-608');
+  const state = await tracker.switch('COM-608', 'review');
+
+  assert.deepEqual(state.activeEntry, {
+    ticketId: 'COM-608',
+    startAt: '2026-05-04T11:05:00.000Z',
+    kind: 'review'
+  });
+  assert.equal(state.sessions.length, 1);
+  assert.equal(state.sessions[0].kind, 'work');
+});
+
+test('tracker pause stops an active code review the same way it stops ticket work', async () => {
+  const filePath = await createTempFilePath();
+  const times = [
+    '2026-05-04T11:00:00.000Z',
+    '2026-05-04T11:20:00.000Z'
+  ];
+  const store = createFileStateStore({ filePath });
+  const tracker = createTracker({
+    store,
+    now: () => times.shift()
+  });
+
+  await tracker.start('COM-608', 'review');
+  const state = await tracker.pause();
+
+  assert.equal(state.status, 'idle');
+  assert.equal(state.activeEntry, null);
+  assert.equal(state.sessions[0].kind, 'review');
 });
 
 test('tracker marks a completed session as synced when Jira worklog delivery succeeds', async () => {
@@ -194,6 +245,7 @@ test('tracker marks a completed session as synced when Jira worklog delivery suc
       startAt: '2026-05-04T09:00:00.000Z',
       endAt: '2026-05-04T09:30:00.000Z',
       durationMs: 1800000,
+      kind: 'work',
       durationSeconds: 1800,
       synced: true,
       syncError: null
@@ -229,6 +281,7 @@ test('tracker preserves completed sessions when Jira worklog delivery fails', as
       startAt: '2026-05-04T12:00:00.000Z',
       endAt: '2026-05-04T12:15:00.000Z',
       durationMs: 900000,
+      kind: 'work',
       durationSeconds: 900,
       synced: false,
       syncError: 'Issue does not exist'
@@ -270,6 +323,7 @@ test('tracker can retry unsynced sessions later', async () => {
       startAt: '2026-05-04T14:00:00.000Z',
       endAt: '2026-05-04T14:20:00.000Z',
       durationMs: 1200000,
+      kind: 'work',
       durationSeconds: 1200,
       synced: true,
       syncError: null

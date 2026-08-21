@@ -103,7 +103,8 @@ function createTracker({
 
     if (
       normalizedCommand.ticketId &&
-      currentState.activeEntry?.ticketId === normalizedCommand.ticketId
+      currentState.activeEntry?.ticketId === normalizedCommand.ticketId &&
+      (currentState.activeEntry?.kind ?? 'work') === (normalizedCommand.kind ?? 'work')
     ) {
       return currentState;
     }
@@ -133,12 +134,12 @@ function createTracker({
       return store.load();
     },
 
-    async start(ticketId) {
-      return runCommand({ type: 'start', ticketId });
+    async start(ticketId, kind = 'work') {
+      return runCommand({ type: 'start', ticketId, kind });
     },
 
-    async switch(ticketId) {
-      return runCommand({ type: 'switch', ticketId });
+    async switch(ticketId, kind = 'work') {
+      return runCommand({ type: 'switch', ticketId, kind });
     },
 
     async pause() {

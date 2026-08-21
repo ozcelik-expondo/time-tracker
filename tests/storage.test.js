@@ -82,10 +82,41 @@ test('load normalizes legacy sessions into unsynced session records', async () =
       endAt: '2026-05-04T11:15:00.000Z',
       durationMs: 4500000,
       durationSeconds: 4500,
+      kind: 'work',
       synced: false,
       syncError: null
     }
   ]);
+});
+
+test('load defaults an invalid or missing session kind to "work" and preserves "review"', async () => {
+  const filePath = await createTempFilePath();
+  await fs.writeFile(filePath, JSON.stringify({
+    status: 'idle',
+    activeEntry: null,
+    sessions: [
+      {
+        ticketId: 'COM-1',
+        startAt: '2026-05-04T10:00:00.000Z',
+        endAt: '2026-05-04T11:00:00.000Z',
+        durationMs: 3600000,
+        kind: 'review'
+      },
+      {
+        ticketId: 'COM-2',
+        startAt: '2026-05-04T11:00:00.000Z',
+        endAt: '2026-05-04T12:00:00.000Z',
+        durationMs: 3600000,
+        kind: 'not-a-real-kind'
+      }
+    ]
+  }, null, 2));
+  const store = createFileStateStore({ filePath });
+
+  const state = await store.load();
+
+  assert.equal(state.sessions[0].kind, 'review');
+  assert.equal(state.sessions[1].kind, 'work');
 });
 
 test('load normalizes a persisted active entry into a ticket ID', async () => {
@@ -104,6 +135,25 @@ test('load normalizes a persisted active entry into a ticket ID', async () => {
 
   assert.deepEqual(state.activeEntry, {
     ticketId: 'COM-609',
-    startAt: '2026-05-04T12:00:00.000Z'
+    startAt: '2026-05-04T12:00:00.000Z',
+    kind: 'work'
   });
+});
+
+test('load preserves a persisted "review" kind on the active entry', async () => {
+  const filePath = await createTempFilePath();
+  await fs.writeFile(filePath, JSON.stringify({
+    status: 'working',
+    activeEntry: {
+      ticketId: 'COM-610',
+      startAt: '2026-05-04T12:00:00.000Z',
+      kind: 'review'
+    },
+    sessions: []
+  }, null, 2));
+  const store = createFileStateStore({ filePath });
+
+  const state = await store.load();
+
+  assert.equal(state.activeEntry.kind, 'review');
 });

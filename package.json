@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/web/server.js",
     "web": "node src/web/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "summarize": "node src/cli/summarize.js"
   },
   "dependencies": {
     "dotenv": "^17.4.2"

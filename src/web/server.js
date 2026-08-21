@@ -150,14 +150,28 @@ function getRequiredTicketId(payload) {
   return ticketId;
 }
 
+function getEntryKind(payload) {
+  const kind = payload?.kind;
+
+  if (kind === undefined || kind === null) {
+    return 'work';
+  }
+
+  if (kind !== 'work' && kind !== 'review') {
+    throw new Error('kind must be either "work" or "review".');
+  }
+
+  return kind;
+}
+
 async function handleAction(request, response, action) {
   const payload = await readJsonBody(request);
   let nextState;
 
   if (action === 'start') {
-    nextState = await tracker.start(getRequiredTicketId(payload));
+    nextState = await tracker.start(getRequiredTicketId(payload), getEntryKind(payload));
   } else if (action === 'switch') {
-    nextState = await tracker.switch(getRequiredTicketId(payload));
+    nextState = await tracker.switch(getRequiredTicketId(payload), getEntryKind(payload));
   } else if (action === 'pause') {
     nextState = await tracker.pause();
   } else {
@@ -220,7 +234,9 @@ async function handleRequest(request, response) {
 
 const server = http.createServer((request, response) => {
   handleRequest(request, response).catch((error) => {
-    const statusCode = error.message === 'A ticket ID is required.' || error.message === 'Request body must be valid JSON.'
+    const statusCode = error.message === 'A ticket ID is required.'
+      || error.message === 'Request body must be valid JSON.'
+      || error.message === 'kind must be either "work" or "review".'
       ? 400
       : 500;
 

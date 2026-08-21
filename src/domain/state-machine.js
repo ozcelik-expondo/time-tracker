@@ -8,13 +8,14 @@ function createInitialState() {
   };
 }
 
-function beginWork(state, ticketId, at) {
+function beginWork(state, ticketId, at, kind = 'work') {
   return {
     ...state,
     status: 'working',
     activeEntry: {
       ticketId,
-      startAt: at
+      startAt: at,
+      kind
     }
   };
 }
@@ -27,7 +28,8 @@ function endActiveWork(state, at) {
   const completedSession = createSession({
     ticketId: state.activeEntry.ticketId,
     startAt: state.activeEntry.startAt,
-    endAt: at
+    endAt: at,
+    kind: state.activeEntry.kind
   });
 
   return {
@@ -42,7 +44,7 @@ function applyCommand(state, command) {
     case 'start':
     case 'switch': {
       const stoppedState = endActiveWork(state, command.at);
-      return beginWork(stoppedState, command.ticketId, command.at);
+      return beginWork(stoppedState, command.ticketId, command.at, command.kind);
     }
     case 'pause':
     case 'punchOut':
