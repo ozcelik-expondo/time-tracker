@@ -15,8 +15,8 @@ const dom = {
   currentSessionBadge: document.querySelector('#current-session-badge'),
   currentSession: document.querySelector('#current-session'),
   sessionLog: document.querySelector('#session-log'),
-  yesterdaySummary: document.querySelector('#yesterday-summary'),
-  yesterdayLog: document.querySelector('#yesterday-log'),
+  lastWorkedSummary: document.querySelector('#last-working-day-summary'),
+  lastWorkedLog: document.querySelector('#last-working-day-log'),
   summaryPanel: document.querySelector('#summary-panel'),
   toast: document.querySelector('#toast')
 };
@@ -57,6 +57,14 @@ function formatTime(timestamp) {
     hour: '2-digit',
     minute: '2-digit'
   }).format(new Date(timestamp));
+}
+
+function formatDayLabel(date) {
+  return new Intl.DateTimeFormat([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  }).format(date);
 }
 
 function normalizeTicketId(value) {
@@ -124,10 +132,19 @@ function getTodayEntries(state, referenceDate = new Date()) {
   return getEntriesForDay(state, referenceDate, { includeActive: true });
 }
 
-function getYesterdayEntries(state, referenceDate = new Date()) {
-  const yesterday = new Date(referenceDate);
-  yesterday.setDate(referenceDate.getDate() - 1);
-  return getEntriesForDay(state, yesterday);
+function getLastWorkedDay(state, referenceDate = new Date(), { maxLookbackDays = 60 } = {}) {
+  const candidate = new Date(referenceDate);
+
+  for (let i = 0; i < maxLookbackDays; i++) {
+    candidate.setDate(candidate.getDate() - 1);
+    const entries = getEntriesForDay(state, candidate);
+
+    if (entries.length > 0) {
+      return { date: new Date(candidate), entries };
+    }
+  }
+
+  return { date: candidate, entries: [] };
 }
 
 function getDashboardStatus(state, todayEntries) {
@@ -257,18 +274,18 @@ function createTicketLabel(ticketId, variant = 'inline', kind = 'work') {
   return label;
 }
 
-function renderRecapSummary(entries) {
-  dom.yesterdaySummary.textContent = '';
+function renderRecapSummary(entries, date) {
+  dom.lastWorkedSummary.textContent = '';
 
   if (entries.length === 0) {
-    dom.yesterdaySummary.className = 'recap-summary empty-state';
+    dom.lastWorkedSummary.className = 'recap-summary empty-state';
     const paragraph = document.createElement('p');
-    paragraph.textContent = 'No tracked time yesterday.';
-    dom.yesterdaySummary.append(paragraph);
+    paragraph.textContent = 'No tracked time recorded yet.';
+    dom.lastWorkedSummary.append(paragraph);
     return;
   }
 
-  dom.yesterdaySummary.className = 'recap-summary';
+  dom.lastWorkedSummary.className = 'recap-summary';
   const totalDurationMs = entries.reduce((sum, entry) => sum + entry.durationMs, 0);
 
   const hero = document.createElement('div');
@@ -276,14 +293,14 @@ function renderRecapSummary(entries) {
 
   const heroLabel = document.createElement('span');
   heroLabel.className = 'summary-label';
-  heroLabel.textContent = 'Yesterday total';
+  heroLabel.textContent = `${formatDayLabel(date)} total`;
 
   const heroValue = document.createElement('strong');
   heroValue.textContent = formatHumanDuration(totalDurationMs);
 
   hero.append(heroLabel, heroValue);
 
-  dom.yesterdaySummary.append(hero);
+  dom.lastWorkedSummary.append(hero);
 }
 
 function showToast(message) {
@@ -475,18 +492,18 @@ function renderSessionLog(entries) {
   }
 }
 
-function renderYesterdayLog(entries) {
-  dom.yesterdayLog.textContent = '';
+function renderLastWorkedDayLog(entries) {
+  dom.lastWorkedLog.textContent = '';
 
   if (entries.length === 0) {
-    dom.yesterdayLog.className = 'session-log empty-state';
+    dom.lastWorkedLog.className = 'session-log empty-state';
     const paragraph = document.createElement('p');
-    paragraph.textContent = 'No sessions logged yesterday.';
-    dom.yesterdayLog.append(paragraph);
+    paragraph.textContent = 'No sessions logged yet.';
+    dom.lastWorkedLog.append(paragraph);
     return;
   }
 
-  dom.yesterdayLog.className = 'session-log';
+  dom.lastWorkedLog.className = 'session-log';
 
   for (const { ticketId, kind, entries: ticketEntries } of groupEntriesByTicketAndKind(entries)) {
     const group = document.createElement('section');
@@ -519,7 +536,7 @@ function renderYesterdayLog(entries) {
       group.append(row);
     }
 
-    dom.yesterdayLog.append(group);
+    dom.lastWorkedLog.append(group);
   }
 }
 
@@ -565,7 +582,7 @@ function renderSummary(entries) {
 function render() {
   const now = new Date();
   const todayEntries = getTodayEntries(uiState.trackerState, now);
-  const yesterdayEntries = getYesterdayEntries(uiState.trackerState, now);
+  const { date: lastWorkedDate, entries: lastWorkedEntries } = getLastWorkedDay(uiState.trackerState, now);
   const dashboardStatus = getDashboardStatus(uiState.trackerState, todayEntries);
   const currentView = getCurrentSessionViewModel(uiState.trackerState, todayEntries);
   const headerDurationMs = currentView ? currentView.durationMs : 0;
@@ -578,8 +595,8 @@ function render() {
 
   renderCurrentSession(currentView);
   renderSessionLog(todayEntries);
-  renderRecapSummary(yesterdayEntries);
-  renderYesterdayLog(yesterdayEntries);
+  renderRecapSummary(lastWorkedEntries, lastWorkedDate);
+  renderLastWorkedDayLog(lastWorkedEntries);
   renderSummary(todayEntries);
 }
 
