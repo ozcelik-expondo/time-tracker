@@ -17,7 +17,6 @@ const dom = {
   sessionLog: document.querySelector('#session-log'),
   lastWorkedSummary: document.querySelector('#last-working-day-summary'),
   lastWorkedLog: document.querySelector('#last-working-day-log'),
-  summaryPanel: document.querySelector('#summary-panel'),
   toast: document.querySelector('#toast')
 };
 
@@ -204,17 +203,8 @@ function getCurrentSessionViewModel(state, todayEntries) {
   return null;
 }
 
-function getSummaryItems(entries) {
-  const totalsByKey = new Map();
-
-  for (const entry of entries) {
-    const key = `${entry.ticketId}::${getEntryKind(entry)}`;
-    const existing = totalsByKey.get(key) ?? { ticketId: entry.ticketId, kind: getEntryKind(entry), durationMs: 0 };
-    existing.durationMs += entry.durationMs;
-    totalsByKey.set(key, existing);
-  }
-
-  return Array.from(totalsByKey.values()).sort((left, right) => right.durationMs - left.durationMs);
+function getTotalDuration(entries) {
+  return entries.reduce((sum, entry) => sum + entry.durationMs, 0);
 }
 
 function groupEntriesByTicketAndKind(entries) {
@@ -286,7 +276,7 @@ function renderRecapSummary(entries, date) {
   }
 
   dom.lastWorkedSummary.className = 'recap-summary';
-  const totalDurationMs = entries.reduce((sum, entry) => sum + entry.durationMs, 0);
+  const totalDurationMs = getTotalDuration(entries);
 
   const hero = document.createElement('div');
   hero.className = 'recap-total';
@@ -540,64 +530,24 @@ function renderLastWorkedDayLog(entries) {
   }
 }
 
-function renderSummary(entries) {
-  dom.summaryPanel.textContent = '';
-
-  if (entries.length === 0) {
-    dom.summaryPanel.className = 'summary-grid empty-state';
-    const paragraph = document.createElement('p');
-    paragraph.textContent = 'No tracked time today.';
-    dom.summaryPanel.append(paragraph);
-    return;
-  }
-
-  dom.summaryPanel.className = 'summary-grid';
-  const totals = getSummaryItems(entries);
-  const totalDurationMs = totals.reduce((sum, item) => sum + item.durationMs, 0);
-
-  const hero = document.createElement('div');
-  hero.className = 'summary-hero';
-  hero.innerHTML = `<span class="summary-label">Total time today</span><p class="summary-total">${formatHumanDuration(totalDurationMs)}</p>`;
-
-  const list = document.createElement('div');
-  list.className = 'summary-list';
-
-  for (const item of totals) {
-    const row = document.createElement('div');
-    row.className = 'summary-item';
-
-    const label = createTicketLabel(item.ticketId, 'inline', item.kind);
-
-    const value = document.createElement('span');
-    value.className = 'summary-duration';
-    value.textContent = formatHumanDuration(item.durationMs);
-
-    row.append(label, value);
-    list.append(row);
-  }
-
-  dom.summaryPanel.append(hero, list);
-}
-
 function render() {
   const now = new Date();
   const todayEntries = getTodayEntries(uiState.trackerState, now);
   const { date: lastWorkedDate, entries: lastWorkedEntries } = getLastWorkedDay(uiState.trackerState, now);
   const dashboardStatus = getDashboardStatus(uiState.trackerState, todayEntries);
   const currentView = getCurrentSessionViewModel(uiState.trackerState, todayEntries);
-  const headerDurationMs = currentView ? currentView.durationMs : 0;
+  const todayTotalDurationMs = getTotalDuration(todayEntries);
 
   setStatusBadge(dom.statusBadge, dashboardStatus.label, dashboardStatus.tone);
   setStatusBadge(dom.currentSessionBadge, currentView?.statusLabel ?? dashboardStatus.label, currentView?.tone ?? dashboardStatus.tone);
   dom.statusNote.textContent = uiState.connectionError ?? dashboardStatus.note;
-  dom.headerTimer.textContent = formatClockDuration(headerDurationMs);
+  dom.headerTimer.textContent = formatClockDuration(todayTotalDurationMs);
   dom.pauseButton.disabled = !uiState.trackerState?.activeEntry;
 
   renderCurrentSession(currentView);
   renderSessionLog(todayEntries);
   renderRecapSummary(lastWorkedEntries, lastWorkedDate);
   renderLastWorkedDayLog(lastWorkedEntries);
-  renderSummary(todayEntries);
 }
 
 dom.startSwitchButton.addEventListener('click', () => {
