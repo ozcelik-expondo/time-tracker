@@ -17,7 +17,22 @@ const dom = {
   sessionLog: document.querySelector('#session-log'),
   lastWorkedSummary: document.querySelector('#last-working-day-summary'),
   lastWorkedLog: document.querySelector('#last-working-day-log'),
-  toast: document.querySelector('#toast')
+  toast: document.querySelector('#toast'),
+  favicon: document.querySelector('#favicon')
+};
+
+const FAVICON_GLYPHS = {
+  working: '<path d="M26 20 L46 32 L26 44 Z" fill="#fff"/>',
+  reviewing: '<path d="M26 20 L46 32 L26 44 Z" fill="#fff"/>',
+  paused: '<rect x="23" y="20" width="6" height="24" rx="2" fill="#fff"/><rect x="35" y="20" width="6" height="24" rx="2" fill="#fff"/>',
+  idle: '<circle cx="32" cy="32" r="8" fill="#fff"/>'
+};
+
+const FAVICON_COLORS = {
+  working: '#2e7d4f',
+  reviewing: '#6552c4',
+  paused: '#c98c2d',
+  idle: '#7a746d'
 };
 
 function formatClockDuration(durationMs) {
@@ -393,6 +408,16 @@ async function startEntry(kind) {
   dom.ticketInput.focus();
 }
 
+function setFavicon(tone) {
+  if (dom.favicon.dataset.tone === tone) {
+    return;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="${FAVICON_COLORS[tone]}"/>${FAVICON_GLYPHS[tone]}</svg>`;
+  dom.favicon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  dom.favicon.dataset.tone = tone;
+}
+
 function setStatusBadge(element, label, tone) {
   element.className = `status-badge ${tone}`;
   element.textContent = label;
@@ -539,6 +564,7 @@ function render() {
   const todayTotalDurationMs = getTotalDuration(todayEntries);
 
   setStatusBadge(dom.statusBadge, dashboardStatus.label, dashboardStatus.tone);
+  setFavicon(dashboardStatus.tone);
   setStatusBadge(dom.currentSessionBadge, currentView?.statusLabel ?? dashboardStatus.label, currentView?.tone ?? dashboardStatus.tone);
   dom.statusNote.textContent = uiState.connectionError ?? dashboardStatus.note;
   dom.headerTimer.textContent = formatClockDuration(todayTotalDurationMs);
