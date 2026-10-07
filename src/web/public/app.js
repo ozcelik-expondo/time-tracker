@@ -172,6 +172,14 @@ function getDashboardStatus(state, todayEntries) {
     };
   }
 
+  if (state?.autoPause) {
+    return {
+      label: 'Paused',
+      tone: 'paused',
+      note: `Auto-stopped ${state.autoPause.ticketId} at ${formatTime(state.autoPause.at)} after inactivity.`
+    };
+  }
+
   if (todayEntries.length > 0) {
     return {
       label: 'Paused',

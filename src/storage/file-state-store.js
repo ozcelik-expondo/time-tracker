@@ -64,11 +64,26 @@ async function ensureStateFile(filePath) {
   }
 }
 
+function normalizeAutoPause(autoPause) {
+  if (typeof autoPause?.ticketId !== 'string' || typeof autoPause?.at !== 'string') {
+    return null;
+  }
+
+  return {
+    ticketId: autoPause.ticketId,
+    kind: normalizeKind(autoPause.kind),
+    at: autoPause.at
+  };
+}
+
 function normalizeState(value) {
+  const autoPause = normalizeAutoPause(value?.autoPause);
+
   return {
     status: value?.status === 'working' ? 'working' : 'idle',
     activeEntry: normalizeActiveEntry(value?.activeEntry ?? null),
-    sessions: Array.isArray(value?.sessions) ? value.sessions.map(normalizeSession) : []
+    sessions: Array.isArray(value?.sessions) ? value.sessions.map(normalizeSession) : [],
+    ...(autoPause ? { autoPause } : {})
   };
 }
 

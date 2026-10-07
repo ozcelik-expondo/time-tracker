@@ -109,10 +109,13 @@ function createTracker({
       return currentState;
     }
 
-    const nextState = applyCommand(currentState, {
-      ...normalizedCommand,
-      at: now()
+    const { autoPause, ...stateCommand } = normalizedCommand;
+    // The auto-pause notice lasts only until the next command.
+    const { autoPause: previousAutoPause, ...appliedState } = applyCommand(currentState, {
+      ...stateCommand,
+      at: stateCommand.at ?? now()
     });
+    const nextState = autoPause ? { ...appliedState, autoPause } : appliedState;
     const completedSessionStartIndex = currentState.sessions.length;
     const persistedState = withStoredSessionRecords(nextState, completedSessionStartIndex);
 
@@ -144,6 +147,21 @@ function createTracker({
 
     async pause() {
       return runCommand({ type: 'pause' });
+    },
+
+    async autoPause(at) {
+      const state = await store.load();
+      const { activeEntry } = state;
+
+      if (!activeEntry) {
+        return state;
+      }
+
+      return runCommand({
+        type: 'pause',
+        at,
+        autoPause: { ticketId: activeEntry.ticketId, kind: activeEntry.kind, at }
+      });
     },
 
 

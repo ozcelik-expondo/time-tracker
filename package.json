@@ -7,7 +7,9 @@
     "start": "node src/web/server.js",
     "web": "node src/web/server.js",
     "test": "node --test",
-    "summarize": "node src/cli/summarize.js"
+    "summarize": "node src/cli/summarize.js",
+    "agent:install": "sh scripts/launch-agent.sh install",
+    "agent:uninstall": "sh scripts/launch-agent.sh uninstall"
   },
   "dependencies": {
     "dotenv": "^17.4.2"

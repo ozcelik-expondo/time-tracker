@@ -51,6 +51,17 @@ The web UI is a thin layer over the existing tracker and exposes these backend r
 - `POST /pause`
 
 
+## Idle Auto-Pause (macOS)
+
+While the server runs, it checks keyboard/mouse idle time every minute. After `IDLE_AUTO_PAUSE_MINUTES` (default 30, `0` disables) without input, the running timer is stopped at the moment of your last input, before anything is synced to Jira. Active video calls (display-sleep assertions or microphone in use) count as activity, and time the Mac spent asleep counts as idle.
+
+To keep the server running in the background, install it as a launchd agent (starts at login, restarts on crash, logs to `~/Library/Logs/time-tracker/web.log`):
+
+```bash
+npm run agent:install
+npm run agent:uninstall
+```
+
 ## Jira Sync
 
 Jira sync is optional. The tracker always saves locally first, then attempts to sync completed sessions. It supports scoped OAuth tokens.

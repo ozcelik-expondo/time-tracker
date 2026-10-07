@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { URL } = require('node:url');
 
+const { createIdleMonitor } = require('../activity/idle-monitor');
 const { createJiraClient } = require('../integrations/jira/client');
 const { createWorklogSyncFromEnvironment } = require('../integrations/jira/worklog-sync');
 const { createFileStateStore } = require('../storage/file-state-store');
@@ -27,6 +28,16 @@ function resolvePort(value) {
 
   if (!Number.isInteger(parsed) || parsed <= 0) {
     return 9999;
+  }
+
+  return parsed;
+}
+
+function resolveIdleThresholdMinutes(value) {
+  const parsed = Number.parseInt(value ?? '30', 10);
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return 30;
   }
 
   return parsed;
@@ -251,3 +262,10 @@ const port = resolvePort(process.env.PORT);
 server.listen(port, () => {
   console.log(`Time tracker web UI available at http://localhost:${port}`);
 });
+
+const idleThresholdMinutes = resolveIdleThresholdMinutes(process.env.IDLE_AUTO_PAUSE_MINUTES);
+
+if (process.platform === 'darwin' && idleThresholdMinutes > 0) {
+  createIdleMonitor({ tracker, idleThresholdMs: idleThresholdMinutes * 60 * 1000 }).start();
+  console.log(`Auto-pausing after ${idleThresholdMinutes} minutes of inactivity.`);
+}
