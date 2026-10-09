@@ -330,3 +330,102 @@ test('tracker can retry unsynced sessions later', async () => {
     }
   ]);
 });
+test('tracker skips sessions shorter than a minute and never retries them', async () => {
+  const filePath = await createTempFilePath();
+  const times = [
+    '2026-05-04T14:00:00.000Z',
+    '2026-05-04T14:00:30.000Z'
+  ];
+  let sendCount = 0;
+  const store = createFileStateStore({ filePath });
+  const tracker = createTracker({
+    store,
+    now: () => times.shift(),
+    worklogSync: {
+      isConfigured: true,
+      async sendSession() {
+        sendCount += 1;
+      }
+    }
+  });
+
+  await tracker.start('PROJ-9');
+  await tracker.pause();
+  const state = await tracker.syncUnsyncedSessions();
+
+  assert.equal(sendCount, 0);
+  assert.equal(state.sessions[0].synced, false);
+  assert.equal(state.sessions[0].syncSkipped, true);
+  assert.match(state.sessions[0].syncError, /Shorter than 60 seconds/);
+});
+
+test('tracker does not send a session twice when syncs overlap', async () => {
+  const filePath = await createTempFilePath();
+  const times = [
+    '2026-05-04T14:00:00.000Z',
+    '2026-05-04T14:20:00.000Z'
+  ];
+  let sendCount = 0;
+  let releaseSend;
+  const store = createFileStateStore({ filePath });
+  const tracker = createTracker({
+    store,
+    now: () => times.shift(),
+    worklogSync: {
+      isConfigured: true,
+      async sendSession() {
+        sendCount += 1;
+        await new Promise((resolve) => {
+          releaseSend = resolve;
+        });
+      }
+    }
+  });
+
+  await tracker.start('PROJ-10');
+  const pausing = tracker.pause();
+  while (!releaseSend) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  await tracker.syncUnsyncedSessions();
+  releaseSend();
+  const state = await pausing;
+
+  assert.equal(sendCount, 1);
+  assert.equal(state.sessions[0].synced, true);
+});
+
+test('tracker sync keeps commands saved while Jira requests are pending', async () => {
+  const filePath = await createTempFilePath();
+  const times = [
+    '2026-05-04T14:00:00.000Z',
+    '2026-05-04T14:20:00.000Z',
+    '2026-05-04T14:21:00.000Z'
+  ];
+  let releaseSend;
+  const store = createFileStateStore({ filePath });
+  const tracker = createTracker({
+    store,
+    now: () => times.shift(),
+    worklogSync: {
+      isConfigured: true,
+      async sendSession() {
+        await new Promise((resolve) => {
+          releaseSend = resolve;
+        });
+      }
+    }
+  });
+
+  await tracker.start('PROJ-11');
+  const pausing = tracker.pause();
+  while (!releaseSend) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  await tracker.start('PROJ-12');
+  releaseSend();
+  const state = await pausing;
+
+  assert.equal(state.activeEntry.ticketId, 'PROJ-12');
+  assert.equal(state.sessions[0].synced, true);
+});

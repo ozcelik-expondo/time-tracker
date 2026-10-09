@@ -2,6 +2,9 @@ const { applyCommand } = require('./domain/state-machine');
 const { buildSessionId, getDurationInSeconds } = require('./domain/session');
 const { normalizeTicketId } = require('./domain/ticket-id');
 
+// Jira rejects worklogs under a minute ("Worklog must not be null."), so retrying them is pointless.
+const MIN_WORKLOG_SECONDS = 60;
+
 function createNoopWorklogSync() {
   return {
     isConfigured: false,
@@ -44,47 +47,55 @@ function createTracker({
   now = () => new Date().toISOString(),
   worklogSync = createNoopWorklogSync()
 }) {
+  // Sessions currently being sent, so overlapping syncs (a pause and the retry timer) don't
+  // post the same worklog twice.
+  const inFlightSessionIds = new Set();
+
   async function syncSessionIds(sessionIds) {
     if (sessionIds.length === 0 || !worklogSync.isConfigured) {
       return store.load();
     }
 
-    const currentState = await store.load();
-    const updatedSessions = [...currentState.sessions];
-    let didChange = false;
+    const loadedState = await store.load();
+    const sessionsToSync = sessionIds
+      .map((sessionId) => loadedState.sessions.find((session) => session.id === sessionId))
+      .filter((session) => session && !session.synced && !session.syncSkipped && !inFlightSessionIds.has(session.id));
 
-    for (const sessionId of sessionIds) {
-      const sessionIndex = updatedSessions.findIndex((session) => session.id === sessionId);
+    if (sessionsToSync.length === 0) {
+      return loadedState;
+    }
 
-      if (sessionIndex === -1 || updatedSessions[sessionIndex].synced) {
+    const updatesById = new Map();
+
+    for (const session of sessionsToSync) {
+      if (session.durationSeconds < MIN_WORKLOG_SECONDS) {
+        updatesById.set(session.id, {
+          synced: false,
+          syncSkipped: true,
+          syncError: `Shorter than ${MIN_WORKLOG_SECONDS} seconds; Jira does not accept it.`
+        });
         continue;
       }
 
+      inFlightSessionIds.add(session.id);
+
       try {
-        await worklogSync.sendSession(updatedSessions[sessionIndex]);
-        updatedSessions[sessionIndex] = {
-          ...updatedSessions[sessionIndex],
-          synced: true,
-          syncError: null
-        };
+        await worklogSync.sendSession(session);
+        updatesById.set(session.id, { synced: true, syncError: null });
       } catch (error) {
-        updatedSessions[sessionIndex] = {
-          ...updatedSessions[sessionIndex],
-          synced: false,
-          syncError: getErrorMessage(error)
-        };
+        updatesById.set(session.id, { synced: false, syncError: getErrorMessage(error) });
+      } finally {
+        inFlightSessionIds.delete(session.id);
       }
-
-      didChange = true;
     }
 
-    if (!didChange) {
-      return currentState;
-    }
-
+    // Reload so commands saved while Jira requests were pending are not overwritten.
+    const currentState = await store.load();
     const nextState = {
       ...currentState,
-      sessions: updatedSessions
+      sessions: currentState.sessions.map((session) => (
+        updatesById.has(session.id) ? { ...session, ...updatesById.get(session.id) } : session
+      ))
     };
 
     await store.save(nextState);
@@ -168,7 +179,7 @@ function createTracker({
     async syncUnsyncedSessions() {
       const state = await store.load();
       const unsyncedSessionIds = state.sessions
-        .filter((session) => !session.synced)
+        .filter((session) => !session.synced && !session.syncSkipped)
         .map((session) => session.id);
 
       return syncSessionIds(unsyncedSessionIds);

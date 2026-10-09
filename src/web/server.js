@@ -22,6 +22,7 @@ const worklogSync = createWorklogSyncFromEnvironment(process.env);
 const store = createFileStateStore({ filePath: dataFilePath });
 const tracker = createTracker({ store, worklogSync });
 const ticketDetailCache = new Map();
+const SYNC_RETRY_INTERVAL_MS = 5 * 60 * 1000;
 
 function resolvePort(value) {
   const parsed = Number.parseInt(value ?? '9999', 10);
@@ -268,4 +269,15 @@ const idleThresholdMinutes = resolveIdleThresholdMinutes(process.env.IDLE_AUTO_P
 if (process.platform === 'darwin' && idleThresholdMinutes > 0) {
   createIdleMonitor({ tracker, idleThresholdMs: idleThresholdMinutes * 60 * 1000 }).start();
   console.log(`Auto-pausing after ${idleThresholdMinutes} minutes of inactivity.`);
+}
+
+// Sessions whose sync failed (e.g. no network right after waking from sleep) are retried
+// at startup and then periodically until Jira accepts them.
+if (worklogSync.isConfigured) {
+  const retryUnsyncedSessions = () => {
+    tracker.syncUnsyncedSessions().catch((error) => console.error(`Sync retry failed: ${error.message}`));
+  };
+
+  retryUnsyncedSessions();
+  setInterval(retryUnsyncedSessions, SYNC_RETRY_INTERVAL_MS);
 }
