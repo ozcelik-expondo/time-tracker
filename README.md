@@ -62,6 +62,10 @@ npm run agent:install
 npm run agent:uninstall
 ```
 
+## Azure Access (PIM)
+
+The header shows an **Activate Azure access** button when the `pim-activate` script exists (default `~/.local/bin/pim-activate`, override with `PIM_ACTIVATE_SCRIPT`). It runs the script with the current ticket as justification and an 8 hour duration, then shows how long access stays active. The button turns orange once access has expired, as a reminder. If the Azure CLI session has no MFA, the script opens a browser sign-in first. A run takes about a minute. The last result is stored in `data/azure-access.json`; hover the button to see the full output.
+
 ## Jira Sync
 
 Jira sync is optional. The tracker always saves locally first, then attempts to sync completed sessions. It supports scoped OAuth tokens.

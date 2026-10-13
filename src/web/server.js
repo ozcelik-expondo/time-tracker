@@ -2,10 +2,12 @@ require('dotenv').config();
 
 const http = require('node:http');
 const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
 const { URL } = require('node:url');
 
 const { createIdleMonitor } = require('../activity/idle-monitor');
+const { createPimActivation } = require('../integrations/azure/pim-activation');
 const { createJiraClient } = require('../integrations/jira/client');
 const { createWorklogSyncFromEnvironment } = require('../integrations/jira/worklog-sync');
 const { createFileStateStore } = require('../storage/file-state-store');
@@ -21,6 +23,10 @@ const jiraClient = createJiraClient({
 const worklogSync = createWorklogSyncFromEnvironment(process.env);
 const store = createFileStateStore({ filePath: dataFilePath });
 const tracker = createTracker({ store, worklogSync });
+const pimActivation = createPimActivation({
+  scriptPath: process.env.PIM_ACTIVATE_SCRIPT || path.join(os.homedir(), '.local', 'bin', 'pim-activate'),
+  statusFilePath: path.resolve(process.cwd(), 'data', 'azure-access.json')
+});
 const ticketDetailCache = new Map();
 const SYNC_RETRY_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -98,7 +104,8 @@ async function createStatePayload(state) {
     ...state,
     serverNow: new Date().toISOString(),
     syncEnabled: worklogSync.isConfigured,
-    ticketDetails: await buildTicketDetails(state)
+    ticketDetails: await buildTicketDetails(state),
+    azureAccess: await pimActivation.getStatus()
   };
 }
 
@@ -194,6 +201,17 @@ async function handleAction(request, response, action) {
   sendJson(response, 200, await createStatePayload(nextState));
 }
 
+function getActivationJustification(state) {
+  return state.activeEntry ? `Working on ${state.activeEntry.ticketId}` : 'Daily development work';
+}
+
+async function handleAzureAccessActivation(response) {
+  const state = await tracker.getState();
+
+  await pimActivation.activate(getActivationJustification(state));
+  sendJson(response, 200, await createStatePayload(await tracker.getState()));
+}
+
 async function handleRequest(request, response) {
   const url = new URL(request.url, 'http://localhost');
 
@@ -233,7 +251,10 @@ async function handleRequest(request, response) {
     return;
   }
 
-  
+  if (request.method === 'POST' && url.pathname === '/azure-access/activate') {
+    await handleAzureAccessActivation(response);
+    return;
+  }
 
   if (url.pathname === '/favicon.ico') {
     response.writeHead(204);

@@ -1,6 +1,7 @@
 const uiState = {
   trackerState: null,
   connectionError: null,
+  isActivatingAzureAccess: false,
   toastTimeoutId: null
 };
 
@@ -12,6 +13,7 @@ const dom = {
   startSwitchButton: document.querySelector('#start-switch-button'),
   reviewButton: document.querySelector('#review-button'),
   pauseButton: document.querySelector('#pause-button'),
+  azureAccessButton: document.querySelector('#azure-access-button'),
   currentSessionBadge: document.querySelector('#current-session-badge'),
   currentSession: document.querySelector('#current-session'),
   sessionLog: document.querySelector('#session-log'),
@@ -563,6 +565,69 @@ function renderLastWorkedDayLog(entries) {
   }
 }
 
+function getAzureAccessViewModel(azureAccess, now) {
+  if (!azureAccess?.available) {
+    return null;
+  }
+
+  if (uiState.isActivatingAzureAccess || azureAccess.running) {
+    return { label: 'Activating… takes about a minute', isDue: false, isBusy: true };
+  }
+
+  const activeUntilMs = azureAccess.activeUntil ? Date.parse(azureAccess.activeUntil) : 0;
+
+  if (activeUntilMs > now.getTime()) {
+    return { label: `Azure access until ${formatTime(activeUntilMs)}`, isDue: false, isBusy: false };
+  }
+
+  return { label: 'Activate Azure access', isDue: true, isBusy: false };
+}
+
+function renderAzureAccessButton(now) {
+  const azureAccess = uiState.trackerState?.azureAccess;
+  const viewModel = getAzureAccessViewModel(azureAccess, now);
+
+  dom.azureAccessButton.hidden = !viewModel;
+
+  if (!viewModel) {
+    return;
+  }
+
+  dom.azureAccessButton.textContent = viewModel.label;
+  dom.azureAccessButton.disabled = viewModel.isBusy;
+  dom.azureAccessButton.classList.toggle('button-due', viewModel.isDue);
+  dom.azureAccessButton.title = azureAccess.lastRun
+    ? [`Last run ${formatTime(azureAccess.lastRun.ranAt)}:`, ...azureAccess.lastRun.lines].join('\n')
+    : 'Activates your eligible Azure PIM roles via pim-activate.';
+}
+
+function getAzureActivationMessage(azureAccess) {
+  const { lastRun, activeUntil } = azureAccess;
+
+  if (lastRun.ok) {
+    return `Azure access active until ${formatTime(activeUntil)}.`;
+  }
+
+  const failure = lastRun.lines.find((line) => line.includes('❌')) ?? lastRun.lines.at(-1);
+
+  return `Azure activation failed. ${failure ?? ''}`.trim();
+}
+
+async function activateAzureAccess() {
+  uiState.isActivatingAzureAccess = true;
+  render();
+
+  try {
+    uiState.trackerState = await requestJson('/azure-access/activate', { method: 'POST', body: '{}' });
+    showToast(getAzureActivationMessage(uiState.trackerState.azureAccess));
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    uiState.isActivatingAzureAccess = false;
+    render();
+  }
+}
+
 function render() {
   const now = new Date();
   const todayEntries = getTodayEntries(uiState.trackerState, now);
@@ -577,6 +642,7 @@ function render() {
   dom.statusNote.textContent = uiState.connectionError ?? dashboardStatus.note;
   dom.headerTimer.textContent = formatClockDuration(todayTotalDurationMs);
   dom.pauseButton.disabled = !uiState.trackerState?.activeEntry;
+  renderAzureAccessButton(now);
 
   renderCurrentSession(currentView);
   renderSessionLog(todayEntries);
@@ -594,6 +660,10 @@ dom.reviewButton.addEventListener('click', () => {
 
 dom.pauseButton.addEventListener('click', () => {
   submitAction('/pause', null, 'Stopped current session.');
+});
+
+dom.azureAccessButton.addEventListener('click', () => {
+  activateAzureAccess();
 });
 
 dom.ticketInput.addEventListener('keydown', (event) => {
